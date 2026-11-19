@@ -7,6 +7,7 @@ W = H = 1200
 ROOT = os.path.dirname(os.path.abspath(__file__))
 FONT_HEAVY = "/usr/share/fonts/truetype/sand-box/google/Bangers/Bangers-Regular.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+MARK_PATH = os.path.join(ROOT, "assets", "mark-1024.png")
 
 
 def font(path, size):
@@ -21,100 +22,157 @@ def centered(draw, box, text, fnt, fill, stroke=0, stroke_fill="#191419"):
     draw.text((x, y), text, font=fnt, fill=fill, stroke_width=stroke, stroke_fill=stroke_fill)
 
 
-def ghost_star(draw, cx, cy, outer, inner, fill):
-    points = []
-    for i in range(8):
-        radius = outer if i % 2 == 0 else inner
-        angle = -math.pi / 2 + i * math.pi / 4
-        points.append((cx + math.cos(angle) * radius, cy + math.sin(angle) * radius))
-    draw.polygon(points, fill=fill)
+def fitted_font(text, max_width, size):
+    while size > 20:
+        candidate = font(FONT_HEAVY, size)
+        if candidate.getlength(text) <= max_width:
+            return candidate
+        size -= 1
+    return font(FONT_HEAVY, size)
 
 
-def draw_ghost(draw):
-    # A clean, standalone mascot silhouette based on the press-kit mark.
-    draw.ellipse((505, 370, 900, 770), fill="#191419")
-    draw.rounded_rectangle((535, 545, 875, 840), radius=125, fill="#191419")
-    draw.ellipse((523, 390, 882, 745), fill="#ffffff")
-    draw.rounded_rectangle((553, 555, 857, 812), radius=102, fill="#ffffff")
-    ghost_star(draw, 645, 533, 25, 7, "#191419")
-    ghost_star(draw, 747, 520, 31, 9, "#191419")
-    # The magenta star coin is a small prop attached to the mascot, not a badge.
-    draw.ellipse((804, 442, 936, 574), fill="#191419")
-    draw.ellipse((817, 455, 923, 561), fill="#c41c83")
-    ghost_star(draw, 870, 508, 42, 18, "#ffffff")
-    draw.ellipse((820, 560, 898, 638), fill="#191419")
-    draw.ellipse((834, 574, 884, 624), fill="#ffffff")
+def extract_mascot():
+    mark = Image.open(MARK_PATH).convert("RGBA")
+    # Clear the connected magenta disc background, then its now-isolated outer ring.
+    ImageDraw.floodfill(mark, (512, 130), (0, 0, 0, 0), thresh=24)
+    ImageDraw.floodfill(mark, (512, 42), (0, 0, 0, 0), thresh=24)
+    pixels = mark.load()
+    center = 511.5
+    for y in range(mark.height):
+        for x in range(mark.width):
+            red, green, blue, alpha = pixels[x, y]
+            magenta = abs(red - 196) < 70 and abs(green - 28) < 70 and abs(blue - 131) < 70
+            coin_center = math.hypot(x - 772, y - 447) < 100
+            if math.hypot(x - center, y - center) > 410 or (magenta and not coin_center):
+                pixels[x, y] = (0, 0, 0, 0)
+            elif alpha == 0:
+                pixels[x, y] = (0, 0, 0, 0)
+            elif not coin_center:
+                rgb = (red, green, blue)
+                matte = (196, 28, 131)
+                candidates = []
+                for foreground in ((25, 20, 25), (255, 255, 255)):
+                    vector = tuple(matte[i] - foreground[i] for i in range(3))
+                    offset = tuple(rgb[i] - foreground[i] for i in range(3))
+                    length_squared = sum(component * component for component in vector)
+                    amount = max(0.0, min(1.0, sum(offset[i] * vector[i] for i in range(3))
+                                              / length_squared))
+                    nearest = tuple(foreground[i] + amount * vector[i] for i in range(3))
+                    distance = math.sqrt(sum((rgb[i] - nearest[i]) ** 2 for i in range(3)))
+                    candidates.append((distance, amount, foreground))
+                distance, amount, foreground = min(candidates, key=lambda item: item[0])
+                if distance < 20 and 0.04 < amount < 0.98:
+                    pixels[x, y] = (*foreground, alpha)
+    bounds = mark.getchannel("A").getbbox()
+    if bounds is None:
+        raise ValueError("Press-kit mascot extraction produced an empty image")
+    mascot = mark.crop(bounds)
+    new_width = 500
+    new_height = round(mascot.height * new_width / mascot.width)
+    return mascot.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+
+def draw_cash(draw, x, y, angle=0):
+    note = Image.new("RGBA", (112, 62), (0, 0, 0, 0))
+    nd = ImageDraw.Draw(note)
+    nd.rounded_rectangle((3, 3, 108, 58), radius=7, fill="#7bd7a2",
+                         outline="#153b35", width=5)
+    nd.ellipse((41, 15, 70, 46), outline="#2c7658", width=4)
+    nd.line((13, 30, 35, 30), fill="#2c7658", width=3)
+    nd.line((76, 30, 98, 30), fill="#2c7658", width=3)
+    note = note.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True)
+    draw._image.alpha_composite(note, (x, y))
 
 
 def main():
-    img = Image.new("RGB", (W, H))
-    pixels = img.load()
-    top, bottom = (255, 116, 105), (21, 107, 129)
-    for y in range(H):
-        t = y / (H - 1)
-        for x in range(W):
-            glow = max(0.0, 1 - math.hypot(x - 870, y - 440) / 800)
-            pixels[x, y] = tuple(
-                int(top[i] * (1 - t) + bottom[i] * t + (15 * glow if i != 2 else 7 * glow))
-                for i in range(3)
-            )
-
+    img = Image.new("RGBA", (W, H), "#18202c")
     draw = ImageDraw.Draw(img)
-    # Simple Vice City skyline and sun keep the setting clear but secondary.
-    draw.ellipse((870, 290, 1090, 510), fill="#ffd47a")
-    draw.polygon([(0, 630), (105, 540), (205, 640), (310, 515), (430, 630),
-                  (550, 550), (660, 640), (790, 530), (920, 625), (1050, 540),
-                  (1200, 635), (1200, 860), (0, 860)], fill="#26365f")
-    for x, y, height, color in [(55, 575, 130, "#26365f"), (250, 580, 110, "#28375f"),
-                                (420, 584, 175, "#27345b"), (1050, 580, 155, "#27345b")]:
-        draw.rectangle((x, y - height, x + 80, y), fill=color)
-        for wy in range(y - height + 24, y - 18, 38):
-            draw.rectangle((x + 18, wy, x + 28, wy + 12), fill="#ffb28e")
-            draw.rectangle((x + 48, wy, x + 58, wy + 12), fill="#ffb28e")
 
-    # One bold, short contrast: GTA 6's wait versus the agent's payout.
-    draw.rounded_rectangle((42, 35, 1158, 262), radius=28, fill="#191419")
-    centered(draw, (65, 53, 1135, 147), "GTA 6: 13 YEARS.", font(FONT_HEAVY, 79),
-             "#ffffff", stroke=3)
-    centered(draw, (65, 145, 1135, 238), "AI: PAID.", font(FONT_HEAVY, 77),
-             "#ffdf63", stroke=3)
+    # Top: warm launch-day living room.
+    for y in range(0, 590):
+        t = y / 589
+        color = (int(255 - 22 * t), int(119 - 13 * t), int(110 + 35 * t), 255)
+        draw.line((0, y, W, y), fill=color)
+    draw.ellipse((930, 176, 1115, 360), fill="#ffd47a")
+    draw.polygon([(0, 430), (115, 370), (225, 430), (350, 355), (460, 425),
+                  (600, 360), (760, 440), (900, 370), (1050, 430), (1200, 365),
+                  (1200, 590), (0, 590)], fill="#26365f")
 
-    # Shared desk grounds the human's stalled download and the agent's paid work.
-    draw.rectangle((55, 820, 1145, 883), fill="#5b3040")
-    draw.rectangle((120, 883, 155, 990), fill="#281d2c")
-    draw.rectangle((1045, 883, 1080, 990), fill="#281d2c")
+    # Caption row one.
+    draw.rounded_rectangle((35, 30, 1165, 153), radius=24, fill="#191419")
+    top_caption = "ME: CALLED IN SICK FOR GTA 6"
+    centered(draw, (60, 39, 1140, 143), top_caption,
+             fitted_font(top_caption, 1030, 76), "#ffffff", stroke=3)
 
-    # Human's GTA 6 download: one readable monitor and an almost-empty progress bar.
-    draw.rounded_rectangle((88, 435, 485, 785), radius=23, fill="#111522",
+    # TV: the download is barely moving, with 13 hours left for the 13-year wait.
+    draw.rounded_rectangle((42, 225, 555, 505), radius=20, fill="#111522",
                            outline="#191419", width=10)
-    draw.rectangle((111, 458, 462, 738), fill="#26385f")
-    centered(draw, (126, 530, 447, 590), "DOWNLOAD", font(FONT_BOLD, 29), "#ffffff")
-    draw.rounded_rectangle((135, 655, 438, 686), radius=12, fill="#111522")
-    draw.rounded_rectangle((135, 655, 158, 686), radius=12, fill="#c41c83")
-    centered(draw, (135, 688, 438, 731), "0.01%", font(FONT_BOLD, 27), "#ff9fbd")
-    draw.polygon([(63, 785), (510, 785), (555, 820), (30, 820)], fill="#10131e")
+    draw.rectangle((66, 249, 531, 478), fill="#26385f")
+    centered(draw, (88, 260, 509, 321), "GTA 6", font(FONT_HEAVY, 55), "#ffdf75")
+    centered(draw, (88, 326, 509, 365), "DOWNLOAD", font(FONT_BOLD, 25), "#ffffff")
+    draw.rounded_rectangle((100, 377, 499, 409), radius=12, fill="#111522")
+    draw.rounded_rectangle((100, 377, 124, 409), radius=12, fill="#c41c83")
+    centered(draw, (90, 413, 512, 468), "0.01%  •  13 HRS LEFT",
+             font(FONT_BOLD, 27), "#ffabc1")
+    draw.polygon([(220, 505), (380, 505), (414, 545), (185, 545)], fill="#111522")
 
-    # Agent mascot, made as a character rather than a logo-disc sticker.
-    draw_ghost(draw)
-    draw.rounded_rectangle((653, 718, 750, 773), radius=6, fill="#7bd7a2",
-                           outline="#153b35", width=4)
-    draw.rectangle((668, 737, 735, 744), fill="#2c7658")
-    draw.ellipse((693, 727, 710, 755), outline="#2c7658", width=3)
+    # Couch, lounging human silhouette, controller, and a sick-day note.
+    draw.rounded_rectangle((620, 408, 1150, 520), radius=34, fill="#c94378",
+                           outline="#191419", width=8)
+    draw.rounded_rectangle((655, 352, 1115, 463), radius=34, fill="#d95a83",
+                           outline="#191419", width=8)
+    draw.ellipse((795, 251, 890, 347), fill="#191419")
+    draw.polygon([(795, 330), (890, 330), (952, 453), (756, 453)], fill="#191419")
+    draw.line((815, 355, 715, 427), fill="#191419", width=29)
+    draw.line((871, 356, 958, 422), fill="#191419", width=29)
+    draw.line((822, 445, 765, 490), fill="#191419", width=34)
+    draw.line((900, 445, 960, 490), fill="#191419", width=34)
+    draw.rounded_rectangle((938, 405, 994, 436), radius=12, fill="#fff0d3",
+                           outline="#191419", width=5)
+    draw.ellipse((951, 412, 960, 421), fill="#191419")
+    draw.ellipse((973, 412, 982, 421), fill="#191419")
+    draw.rounded_rectangle((1005, 270, 1128, 356), radius=8, fill="#fff1d0",
+                           outline="#191419", width=5)
+    centered(draw, (1010, 278, 1122, 348), "SICK", font(FONT_HEAVY, 38), "#c41c83")
 
-    # Its bounty-result screen sits beside the ghost with all text unobstructed.
-    draw.rounded_rectangle((950, 485, 1170, 778), radius=20, fill="#111522",
+    # Strong split between the human's sick day and the AI agent's shift.
+    draw.rectangle((0, 570, W, 615), fill="#191419")
+    for x in range(0, W, 54):
+        draw.rectangle((x, 587, x + 24, 598), fill="#ffdf63")
+
+    # Bottom: the agent clocks in at a compact desk against a cool Vice City night.
+    for y in range(615, H):
+        t = (y - 615) / (H - 615)
+        color = (int(18 + 4 * t), int(94 + 27 * t), int(117 + 13 * t), 255)
+        draw.line((0, y, W, y), fill=color)
+    draw.rounded_rectangle((35, 632, 1165, 744), radius=24, fill="#191419")
+    bottom_caption = "MY AI: CLOCKED IN ON MAKE.FUN, GOT PAID"
+    centered(draw, (55, 638, 1145, 738), bottom_caption,
+             fitted_font(bottom_caption, 1040, 64), "#ffdf63", stroke=2)
+
+    # Authentic press-kit ghost, cleaned of its disc and outer ring.
+    mascot = extract_mascot()
+    img.alpha_composite(mascot, (112, 760))
+    draw = ImageDraw.Draw(img)
+
+    # Small flying payout bills reinforce the win without covering the ghost.
+    draw_cash(draw, 580, 800, -13)
+    draw_cash(draw, 602, 930, 12)
+
+    # Agent workstation with make.fun and its bounty payout clearly on screen.
+    draw.rounded_rectangle((715, 782, 1142, 1041), radius=20, fill="#111522",
                            outline="#191419", width=9)
-    draw.rectangle((969, 506, 1151, 739), fill="#b92371")
-    centered(draw, (975, 529, 1145, 590), "BOUNTY", font(FONT_HEAVY, 38), "#ffffff")
-    centered(draw, (975, 592, 1145, 676), "make.fun", font(FONT_BOLD, 24), "#ffdf63")
-    draw.polygon([(976, 778), (1143, 778), (1165, 820), (954, 820)], fill="#10131e")
+    draw.rounded_rectangle((737, 803, 1120, 1008), radius=12, fill="#b92371")
+    centered(draw, (753, 813, 1104, 872), "BOUNTY WON", font(FONT_HEAVY, 41), "#ffffff")
+    centered(draw, (753, 871, 1104, 935), "+$500", font(FONT_HEAVY, 54), "#ffdf63")
+    centered(draw, (753, 937, 1104, 995), "make.fun", font(FONT_BOLD, 34), "#ffffff")
+    draw.polygon([(700, 1041), (1156, 1041), (1195, 1096), (660, 1096)],
+                 fill="#171521")
+    draw.line((725, 1058, 1130, 1058), fill="#4a5368", width=5)
+    for x in range(750, 1110, 36):
+        draw.line((x, 1072, x + 18, 1072), fill="#aeb6c5", width=3)
 
-    # A clear footer line completes the make.fun pitch without adding clutter.
-    draw.rounded_rectangle((122, 930, 1078, 1102), radius=30, fill="#191419")
-    centered(draw, (150, 944, 1050, 1084), "PEOPLE + AI WIN BOUNTIES", font(FONT_HEAVY, 57),
-             "#ffdf63")
-
-    img.save(os.path.join(ROOT, "meme.png"), format="PNG", optimize=True)
+    img.convert("RGB").save(os.path.join(ROOT, "meme.png"), format="PNG", optimize=True)
 
 
 if __name__ == "__main__":
