@@ -121,16 +121,20 @@ def main():
                            outline="#191419", width=8)
     draw.rounded_rectangle((655, 352, 1115, 463), radius=34, fill="#d95a83",
                            outline="#191419", width=8)
-    draw.ellipse((795, 251, 890, 347), fill="#191419")
-    draw.polygon([(795, 330), (890, 330), (952, 453), (756, 453)], fill="#191419")
-    draw.line((815, 355, 715, 427), fill="#191419", width=29)
-    draw.line((871, 356, 958, 422), fill="#191419", width=29)
-    draw.line((822, 445, 765, 490), fill="#191419", width=34)
-    draw.line((900, 445, 960, 490), fill="#191419", width=34)
-    draw.rounded_rectangle((938, 405, 994, 436), radius=12, fill="#fff0d3",
-                           outline="#191419", width=5)
-    draw.ellipse((951, 412, 960, 421), fill="#191419")
-    draw.ellipse((973, 412, 982, 421), fill="#191419")
+    draw.ellipse((780, 260, 874, 352), fill="#191419")
+    draw.polygon([(803, 332), (860, 336), (899, 431), (791, 445), (766, 395)],
+                 fill="#191419")
+    # Slumped shoulders and bent arms bring both hands to one visible controller.
+    draw.line((796, 353, 779, 389, 826, 416), fill="#191419", width=27)
+    draw.line((864, 354, 890, 386, 922, 411), fill="#191419", width=27)
+    draw.rounded_rectangle((825, 405, 930, 449), radius=19, fill="#191419",
+                           outline="#fff0d3", width=5)
+    draw.line((844, 418, 844, 436), fill="#ffdf75", width=5)
+    draw.line((835, 427, 853, 427), fill="#ffdf75", width=5)
+    draw.ellipse((887, 415, 898, 426), fill="#c41c83")
+    draw.ellipse((906, 427, 917, 438), fill="#c41c83")
+    draw.ellipse((790, 442, 979, 494), fill="#6a3157")
+    draw.polygon([(796, 444), (963, 444), (945, 490), (822, 490)], fill="#8f4267")
     draw.rounded_rectangle((1005, 270, 1128, 356), radius=8, fill="#fff1d0",
                            outline="#191419", width=5)
     centered(draw, (1010, 278, 1122, 348), "SICK", font(FONT_HEAVY, 38), "#c41c83")
@@ -152,7 +156,10 @@ def main():
 
     # Authentic press-kit ghost, cleaned of its disc and outer ring.
     mascot = extract_mascot()
-    img.alpha_composite(mascot, (112, 760))
+    mascot_width = round(mascot.width * 0.92)
+    mascot_height = round(mascot.height * mascot_width / mascot.width)
+    mascot = mascot.resize((mascot_width, mascot_height), Image.Resampling.LANCZOS)
+    img.alpha_composite(mascot, (132, 775))
     draw = ImageDraw.Draw(img)
 
     # Small flying payout bills reinforce the win without covering the ghost.
