@@ -35,12 +35,12 @@ CARDS = [
          rarity="71.2% of players"),
     dict(grade="SILVER", name="Out Sick",
          desc="Three sick days. The preload isn't finished.",
-         rarity="94.7% of players"),
+         rarity="94.7% of players (the rest are self-employed)"),
     dict(grade="GOLD", name="Florida Energy",
-         desc="Jason and Lucia hit five stars in Leonida.",
+         desc="Wanted level 5 for parking normally in Leonida.",
          rarity="18.4% of players"),
     dict(grade="GOLD", name="Passive Income",
-         desc="Won a bounty. You hadn't moved in 72 hours.",
+         desc="My AI agent won a bounty. I hadn't moved in 72 hrs.",
          rarity="0.6% of players", ghost=True, chip="$ earned"),
 ]
 
